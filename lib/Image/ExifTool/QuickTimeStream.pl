@@ -890,8 +890,40 @@ sub Process_text($$$)
         $et->VerboseDir($dirName, undef, length($$dataPt));
     }
 
-    while ($$dataPt =~ /\$(\w+)([^\$]*)/g) {
-        my ($tag, $dat) = ($1, $2);
+#   Note: this only handles accelerometer data when accompanied by GPS data, the same as the MyNextBase app
+
+#   while ($$dataPt =~ /\$(\w+)([^\$]*)/g) {
+    while ($$dataPt =~ /(\d{14,}(.{12,}))?\$(\w+)([^\$]*)/g) {
+#       my ($tag, $dat) = ($1, $2);
+        my ($ltime, $accl, $tag, $dat) = ($1, $2, $3, $4);
+
+        if ($accl) {
+
+#		little endian encoding?
+		my $x = unpack("N", pack("v*", unpack("n*", substr($accl,0,4))));
+		my $y = unpack("N", pack("v*", unpack("n*", substr($accl,4,4))));
+		my $z = unpack("N", pack("v*", unpack("n*", substr($accl,8,4))));
+
+#		seems to be negative >0x7FFFFFFF
+		if ($x>2**31) {	$x = $x - (2**32 - 2**16); }
+		if ($y>2**31) {	$y = $y - (2**32 - 2**16); }
+		if ($z>2**31) {	$z = $z - (2**32 - 2**16); }
+
+#		and negative again for >0x4000 (16384)
+		if ($x>(2**15 + 2**14)) { $x = $x - (2**16); }
+		if ($y>(2**15 + 2**14)) { $y = $y - (2**16); }
+		if ($z>(2**15 + 2**14)) { $z = $z - (2**16); }
+
+#		scaling
+                $x = $x / -1280;
+                $y = $y / 1280;
+                $z = $z / 1280;
+
+#		print "Accelerometer,$x,$y,$z\n";
+		$tags{Accelerometer} = "$x $y $z";
+
+        }
+
         if ($tag =~ /^[A-Z]{2}RMC$/ and $dat =~ /^,(\d{2})(\d{2})(\d+(?:\.\d*)),A?,(\d*?)(\d{1,2}\.\d+),([NS]),(\d*?)(\d{1,2}\.\d+),([EW]),(\d*\.?\d*),(\d*\.?\d*),(\d{2})(\d{2})(\d+)/) {
             my $time = "$1:$2:$3";
             if ($$et{LastTime}) {
